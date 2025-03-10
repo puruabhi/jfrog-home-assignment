@@ -84,6 +84,9 @@ This will run all the tests in the repository and display detailed output.
 │   └── home-assignment
 │       └── home-assignment.go
 ├── internal
+│   ├── logger
+│   │   ├── fmt_logger.go
+│   │   └── zap_logger.go
 │   ├── config
 │   │   ├── config.go
 │   │   ├── config_test.go
@@ -98,7 +101,6 @@ This will run all the tests in the repository and display detailed output.
 │   │   ├── file_writer.go
 │   │   └── file_writer_test.go
 │   └── types
-│       ├── logger_stub.go
 │       └── types.go
 ├── go.mod
 ├── go.sum

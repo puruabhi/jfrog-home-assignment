@@ -5,4 +5,5 @@ package types
 type Downloadable interface {
 	GetFinishChan() chan struct{}
 	GetURLsChan() chan string
+	GetStats() any
 }

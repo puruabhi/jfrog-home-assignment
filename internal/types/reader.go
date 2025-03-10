@@ -4,4 +4,5 @@ package types
 
 type Readable interface {
 	Close() error
+	GetReadURLs() int32
 }

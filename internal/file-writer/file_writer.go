@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/puruabhi/jfrog/home-assignment/internal/config"
@@ -18,6 +19,13 @@ type fileWriter struct {
 	config    config.WriteConfig
 	logger    types.Logger
 	writeChan chan []byte
+
+	// stat variables
+	stats struct {
+		writeFailed  atomic.Int32
+		writing      atomic.Int32
+		writeSuccess atomic.Int32
+	}
 }
 
 // NewFileWriter initializes a new fileWriter instance and starts the writer goroutine.
@@ -30,6 +38,8 @@ func NewFileWriter(ctx context.Context, config config.WriteConfig, logger types.
 	}
 
 	go writer.writer()
+
+	writer.logger.Infof("File writer started")
 	return writer
 }
 
@@ -53,13 +63,18 @@ func (w *fileWriter) writer() {
 
 // write writes the given bytes to a new file.
 func (w *fileWriter) write(bytes []byte) {
+	w.stats.writing.Add(1)
+	defer w.stats.writing.Add(-1)
+
 	fileName := fmt.Sprintf("%s%s", uuid.New(), fileExt)
 	filePath := path.Join(w.config.WriteDir, fileName)
 
 	if err := os.WriteFile(filePath, bytes, 0644); err != nil {
 		w.logger.Errorf("Failed to save file: %s\n", err)
+		w.stats.writeFailed.Add(1)
 	} else {
-		w.logger.Infof("Saved: %s\n", filePath)
+		w.logger.Debugf("Saved: %s\n", filePath)
+		w.stats.writeSuccess.Add(1)
 	}
 }
 
@@ -71,4 +86,17 @@ func (w *fileWriter) PushForWrite(bytes []byte) {
 // close closes the writeChan.
 func (w *fileWriter) close() {
 	close(w.writeChan)
+}
+
+func (w *fileWriter) GetStats() any {
+	type stats struct {
+		WriteFailed  int32 `json:"write_failed"`
+		Writing      int32 `json:"writing"`
+		WriteSuccess int32 `json:"write_success"`
+	}
+	return stats{
+		WriteFailed:  w.stats.writeFailed.Load(),
+		Writing:      w.stats.writing.Load(),
+		WriteSuccess: w.stats.writeSuccess.Load(),
+	}
 }

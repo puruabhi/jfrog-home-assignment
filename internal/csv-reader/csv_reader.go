@@ -25,6 +25,7 @@ type csvReader struct {
 	fileReader FileReadable
 	logger     types.Logger
 	urls       chan string
+	readUrls   int32
 }
 
 // NewCSVReader initializes a new csvReader instance and starts fetching URLs.
@@ -44,6 +45,8 @@ func NewCSVReader(config config.ReadConfig, logger types.Logger, urlChan chan st
 	}
 
 	go csv.fetchURLs()
+
+	csv.logger.Infof("CSV reader started")
 	return csv, nil
 }
 
@@ -56,7 +59,7 @@ func (r *csvReader) fetchURLs() {
 		r.logger.Errorf("Error reading csv file: %s", err)
 		return
 	}
-	r.logger.Infof("CSV header: %+v\n", header)
+	r.logger.Debugf("CSV header: %+v\n", header)
 
 	for {
 		url, err := r.read()
@@ -66,6 +69,8 @@ func (r *csvReader) fetchURLs() {
 			}
 			return
 		}
+
+		r.readUrls++
 		r.logger.Debugf("URL: %s\n", url[0])
 		r.urls <- url[0]
 	}
@@ -85,4 +90,8 @@ func (r *csvReader) Close() error {
 		return fmt.Errorf("file reader is not initialized")
 	}
 	return r.fileReader.Close()
+}
+
+func (r *csvReader) GetReadURLs() int32 {
+	return r.readUrls
 }

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/puruabhi/jfrog/home-assignment/internal/types"
 )
@@ -20,14 +19,19 @@ const (
 )
 
 type downloader struct {
-	ctx           context.Context
-	logger        types.Logger
-	reader        types.Readable
-	writer        types.Writable
-	finish        chan struct{}
-	urls          chan string
-	lock          chan struct{}
-	activeCounter int32 // Atomic counter for active downloads
+	ctx    context.Context
+	logger types.Logger
+	reader types.Readable
+	writer types.Writable
+	finish chan struct{}
+	urls   chan string
+	lock   chan struct{}
+
+	stats struct {
+		activeDownloads    atomic.Int32
+		downloadSuccessful atomic.Int32
+		downloadFailed     atomic.Int32
+	}
 }
 
 // NewDownloader initializes a new downloader instance and starts processing and monitoring routines.
@@ -43,7 +47,8 @@ func NewDownloader(ctx context.Context, logger types.Logger, reader types.Readab
 	}
 
 	go down.startProcessing()
-	go down.monitorActiveDownloads()
+
+	down.logger.Infof("Downloader started")
 	return down
 }
 
@@ -81,16 +86,19 @@ func (d *downloader) downloadAndPush(url string, wg *sync.WaitGroup) {
 	defer func() {
 		<-d.lock
 		wg.Done()
-		atomic.AddInt32(&d.activeCounter, -1) // Decrement the counter
+		d.stats.activeDownloads.Add(-1)
 	}()
 
-	atomic.AddInt32(&d.activeCounter, 1) // Increment the counter
+	d.stats.activeDownloads.Add(1) // Increment the counter
 
 	content, err := d.download(url)
 	if err != nil {
-		d.logger.Errorf("Error downloading URL: %s - %s\n", url, err)
+		d.logger.Debugf("Error downloading URL: %s - %s", url, err)
+		d.stats.downloadFailed.Add(1)
 		return
 	}
+
+	d.stats.downloadSuccessful.Add(1)
 	d.writer.PushForWrite(content)
 }
 
@@ -142,23 +150,16 @@ func (d *downloader) GetURLsChan() chan string {
 	return d.urls
 }
 
-// GetActiveCounter returns the current count of active downloads.
-func (d *downloader) GetActiveCounter() int32 {
-	return atomic.LoadInt32(&d.activeCounter)
-}
+func (d *downloader) GetStats() any {
+	type stats struct {
+		ActiveDownloads    int32 `json:"active_downloads"`
+		DownloadSuccessful int32 `json:"download_successful"`
+		DownloadFailed     int32 `json:"download_failed"`
+	}
 
-// monitorActiveDownloads periodically logs the number of active downloads.
-func (d *downloader) monitorActiveDownloads() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-d.ctx.Done():
-			return
-		case <-ticker.C:
-			activeDownloads := d.GetActiveCounter()
-			d.logger.Infof("Active downloads: %d", activeDownloads)
-		}
+	return stats{
+		ActiveDownloads:    d.stats.activeDownloads.Load(),
+		DownloadSuccessful: d.stats.downloadSuccessful.Load(),
+		DownloadFailed:     d.stats.downloadFailed.Load(),
 	}
 }

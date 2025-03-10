@@ -4,4 +4,5 @@ package types
 
 type Writable interface {
 	PushForWrite([]byte)
+	GetStats() any
 }
